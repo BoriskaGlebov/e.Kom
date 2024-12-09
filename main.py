@@ -1,39 +1,57 @@
 from contextlib import asynccontextmanager
 import random
 
+from fastapi.params import Depends
+
 from config import logger
 import uvicorn
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr, Field, validator, field_validator
-from typing import List
+from typing import List, Union
 
-from data_generate import random_data, generate_random_data
-from schemas import SInputData
+from data_generate import generate_random_data
+from schemas import SInputData, SFormTemplate, SInputDdataEmpty
+
 
 # Настройка подключения к MongoDB
-client = AsyncIOMotorClient("mongodb://user:password@localhost:27017")
-db_name = 'e_kom'
-client.drop_database('ekom')
-db = client[db_name]  # Имя вашей базы данных
-templates_collection = db["form_templates"]
+MONGODB_URL = "mongodb://user:password@localhost:27017"
+DATABASE_NAME = 'e_kom'
+
+# Создаем экземпляр клиента MongoDB
+client = AsyncIOMotorClient(MONGODB_URL)
+
+# Функция для получения подключения к базе данных
+async def get_db():
+    """Получение подключения к базе данных."""
+    db = client[DATABASE_NAME]  # Получаем базу данных
+    try:
+        yield db  # Возвращаем подключение к базе данных
+    finally:
+        pass  # Здесь можно закрыть соединение, если это необходимо
+# client = AsyncIOMotorClient("mongodb://user:password@localhost:27017")
+# db_name = 'e_kom'
+# client.drop_database('ekom')
+# db = client[db_name]  # Имя вашей базы данных
+# templates_collection = db["form_templates"]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Действия перед запуском приложения.
+    Lifespan context manager for the FastAPI application.
 
-    :param app:
-    :return:
+    This function performs setup actions before the application starts,
+    including clearing the database and populating it with random data.
+
+    :param app: The FastAPI application instance.
     """
     logger.info("Перед первым запуском некоторые действия.")
-    await client.drop_database(db_name)
+
+    await client.drop_database(DATABASE_NAME)
     logger.info("БД очищена")
-    num_fields_to_generate = random.randint(1, 10)  # Случайное количество полей от 1 до 10
-    # Случайное количество полей от 1 до 10
-    random_data = [generate_random_data(num_fields_to_generate) for _ in range(10)]
-    print(random_data)
+    db = client[DATABASE_NAME]
+    random_data = [generate_random_data(random.randint(1, 10)) for _ in range(100)]
+    templates_collection = db["form_templates"]
     await templates_collection.insert_many(random_data)
     yield
     client.close()
@@ -90,31 +108,37 @@ app = FastAPI(
 )
 
 
-@app.post("/get_form", )
-async def get_form(form_data: SInputData):
+@app.post("/get_form", response_model=Union[List[SFormTemplate], SInputDdataEmpty])
+async def get_form(form_data: SInputData,db=Depends(get_db)) -> Union[List[SFormTemplate], SInputDdataEmpty]:
+    """
+    Retrieve form templates based on input data.
+
+    This endpoint accepts form data and searches for matching templates in the database.
+
+    :param form_data: The input data containing fields to search for.
+
+    :return: A list of matching form templates (SFormTemplate) or an empty input response (SInputDdataEmpty)
+             if no templates are found.
+    """
     print(form_data)
-    return form_data.replace_data()
+    fields_search = form_data.replace_data()
+    print(fields_search)
 
+    templates_collection=db["form_templates"]
+    res = await templates_collection.find(fields_search).to_list(length=None)
+    print(res)
+    if res:
+        items = []
+        for item in res:
+            items.append(SFormTemplate(
+                name=item["name"],
+                fields={k: v for k, v in item.items() if k not in ('_id', 'name')}
+            ))
+        return items
 
-# @app.post("/forms/", response_model=SFormTemplate)
-# async def create_item(item: SFormTemplateAdd):
-#     item_dict = item.model_dump()
-#     print(item_dict)
-#     result = await templates_collection.insert_one(item_dict)  # Вставка документа в коллекцию
-#     item_dict["id"] = str(result.inserted_id)  # Добавление ID к объекту
-#     return item_dict
-#
-#
-# @app.get("/forms/", response_model=List[SFormsTemplate])
-# async def read_items():
-#     items = []
-#     async for item in templates_collection.find():  # Асинхронное извлечение документов
-#         item["id"] = str(item["_id"])  # Преобразование ObjectId в строку
-#         print(item)
-#         items.append(item)
-#     print(items)
-#     return items
+    logger.error("Не нашлось нужного шаблона")
 
+    return SInputDdataEmpty(extra_fields=fields_search)
 
 if __name__ == "__main__":
     uvicorn.run(app="main:app", host="0.0.0.0", port=8000, reload=True)
