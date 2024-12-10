@@ -1,49 +1,59 @@
 # conftest.py
+import random
+
 import pytest
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from data_generate import \
+    generate_random_data  # Import your data generation function
 from main import app, get_db
-# Настройка подключения к MongoDB
+
+# MongoDB settings for testing
 MONGODB_URL = "mongodb://user:password@localhost:27017"
-DATABASE_NAME = 'e_kom'
+TEST_DATABASE_NAME = "test_db"
+COLLECTION_NAME = "form_templates"
 
-# Создаем экземпляр клиента MongoDB
-client = AsyncIOMotorClient(MONGODB_URL)
-
-
-def override_get_db():
-    """Получение подключения к базе данных."""
-    db = client[DATABASE_NAME]  # Получаем базу данных
-    try:
-        yield db  # Возвращаем подключение к базе данных
-    finally:
-        pass  # Здесь можно закрыть соединение, если это необходимо
-
-app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture(scope="session")
 async def mongo_client():
-    """Фикстура для подключения к MongoDB."""
-    client = AsyncIOMotorClient("mongodb://user:password@localhost:27017")
+    """Fixture for MongoDB client."""
+    client = AsyncIOMotorClient(MONGODB_URL)
     yield client
     client.close()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 async def setup_database(mongo_client):
-    """Фикстура для настройки тестовой базы данных."""
-    db = mongo_client['test_db']
+    """Fixture for setting up and tearing down the test database."""
+    db = mongo_client[TEST_DATABASE_NAME]
 
-    # Очистка коллекции перед каждым тестом
-    await db.drop_collection("form_templates")
+    # Clear the database before each test
+    await db.drop_collection(COLLECTION_NAME)
 
-    # Вставка тестовых данных
-    await db.form_templates.insert_many([
-        {"name": "Template 1", "fields": {"email_field": "email", "phone_field": "phone"}},
-        {"name": "Template 2", "fields": {"date_field": "date", "text_field": "text"}},
-    ])
+    # Insert some initial data for testing
+    random_data = [generate_random_data(random.randint(1, 10)) for _ in range(100)]
+    await db[COLLECTION_NAME].insert_many(random_data)
+    await db[COLLECTION_NAME].insert_one(
+        {
+            "name": "test_inf",
+            "text_field": "text",
+            "email_field": "email",
+            "phone_field": "phone",
+            "date_field": "date",
+        }
+    )
 
-    yield db  # Предоставление базы данных для тестов
+    yield db  # Provide the database to the test
 
-    # Очистка после теста
-    await db.drop_collection("form_templates")
+    # Clean up after each test
+    await db.drop_collection(COLLECTION_NAME)
+
+
+@pytest.fixture(autouse=True)
+def override_get_db(setup_database):
+    """Override the get_db dependency to use the test database."""
+
+    async def _override_get_db():
+        return setup_database
+
+    app.dependency_overrides[get_db] = _override_get_db

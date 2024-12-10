@@ -1,9 +1,11 @@
 import re
-from typing import Dict, Any
-from config import logger
-from bson import ObjectId
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from typing import Any, Dict
+
 import phonenumbers
+from bson import ObjectId
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from config import logger
 
 
 class SInputDdataEmpty(BaseModel):
@@ -12,6 +14,7 @@ class SInputDdataEmpty(BaseModel):
     Attributes:
         extra_fields (Dict[str, Any]): Словарь для хранения дополнительных полей.
     """
+
     extra_fields: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -24,9 +27,10 @@ class SInputData(BaseModel):
     Methods:
         replace_data() -> Dict[str, str]: Заменяет значения дополнительных полей на их типы.
     """
+
     extra_fields: Dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator('extra_fields', mode='before')
+    @field_validator("extra_fields", mode="before")
     def validate_extra_fields(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Валидация дополнительных полей.
 
@@ -55,22 +59,28 @@ class SInputData(BaseModel):
         out_dict = {}
         for field_name, field_value in self.extra_fields.items():
             if isinstance(field_value, str):
-                if '@' in field_value and EmailStr._validate(field_value):
+                if "@" in field_value and EmailStr._validate(field_value):
                     out_dict[field_name] = "email"
-                elif re.match(r'^\+?\d{10,15}$', field_value):
+                elif re.match(r"^\+?\d{10,15}$", field_value):
                     try:
                         parsed_number = phonenumbers.parse(field_value)
                         if not phonenumbers.is_valid_number(parsed_number):
-                            logger.error(f'Номер телефона "{field_value}" недействителен')
+                            logger.error(
+                                f'Номер телефона "{field_value}" недействителен'
+                            )
                             out_dict[field_name] = "text"
                             continue
                         out_dict[field_name] = "phone"
                     except phonenumbers.NumberParseException:
-                        raise ValueError(f'Неверный формат номера телефона "{field_value}"')
-                elif re.match(r'^\d{2}\.\d{2}\.\d{4}$', field_value) or re.match(r'^\d{4}-\d{2}-\d{2}$', field_value):
-                    out_dict[field_name] = 'date'
+                        raise ValueError(
+                            f'Неверный формат номера телефона "{field_value}"'
+                        )
+                elif re.match(r"^\d{2}\.\d{2}\.\d{4}$", field_value) or re.match(
+                    r"^\d{4}-\d{2}-\d{2}$", field_value
+                ):
+                    out_dict[field_name] = "date"
                 else:
-                    out_dict[field_name] = 'text'
+                    out_dict[field_name] = "text"
         return out_dict
 
 
@@ -84,10 +94,11 @@ class SFormTemplate(BaseModel):
     Methods:
         validate_fields(v: Dict[str, str]) -> Dict[str, str]: Валидация типов полей шаблона.
     """
+
     name: str = ...
     fields: Dict[str, str]  # Словарь для хранения полей с их типами
 
-    @field_validator('fields')
+    @field_validator("fields")
     @classmethod
     def validate_fields(cls, v: Dict[str, str]) -> Dict[str, str]:
         """Валидация типов полей шаблона формы.
@@ -98,9 +109,10 @@ class SFormTemplate(BaseModel):
         :raises ValueError: Если тип поля недопустим.
         :return: Проверенное значение.
         """
-        allowed_types = {'email', 'phone', 'date', 'text'}
+        allowed_types = {"email", "phone", "date", "text"}
         for field_name, field_type in v.items():
             if field_type not in allowed_types:
                 raise ValueError(
-                    f"Field '{field_name}' has an invalid type '{field_type}'. Allowed types are {allowed_types}.")
+                    f"Field '{field_name}' has an invalid type '{field_type}'. Allowed types are {allowed_types}."
+                )
         return v

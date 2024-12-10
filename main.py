@@ -1,20 +1,19 @@
-from contextlib import asynccontextmanager
 import random
-
-from fastapi.params import Depends
-
-from config import logger
-import uvicorn
-from fastapi import FastAPI
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
+from contextlib import asynccontextmanager
 from typing import List, Union
 
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.params import Depends
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
+
+from config import logger
 from data_generate import generate_random_data
-from schemas import SInputData, SFormTemplate, SInputDdataEmpty
+from schemas import SFormTemplate, SInputData, SInputDdataEmpty
 
 # Настройка подключения к MongoDB
 MONGODB_URL = "mongodb://user:password@localhost:27017"
-DATABASE_NAME = 'e_kom'
+DATABASE_NAME = "e_kom"
 COLLECTION_NAME = "form_templates"
 
 # Создаем экземпляр клиента MongoDB
@@ -105,8 +104,9 @@ app = FastAPI(
 
 
 @app.post("/get_form", response_model=Union[List[SFormTemplate], SInputDdataEmpty])
-async def get_form(form_data: SInputData, db: AsyncIOMotorCollection = Depends(get_db)) -> Union[
-    List[SFormTemplate], SInputDdataEmpty]:
+async def get_form(
+    form_data: SInputData, db: AsyncIOMotorCollection = Depends(get_db)
+) -> Union[List[SFormTemplate], SInputDdataEmpty]:
     """
     Retrieve form templates based on input data.
 
@@ -118,25 +118,26 @@ async def get_form(form_data: SInputData, db: AsyncIOMotorCollection = Depends(g
     :return: A list of matching form templates (SFormTemplate) or an empty input response (SInputDdataEmpty)
              if no templates are found.
     """
-    print(form_data)
     fields_search = form_data.replace_data()
-    print(fields_search)
 
     templates_collection = db[COLLECTION_NAME]
     res = await templates_collection.find(fields_search).to_list(length=None)
-    print(res)
     if res:
         items = []
         for item in res:
-            items.append(SFormTemplate(
-                name=item["name"],
-                fields={k: v for k, v in item.items() if k not in ('_id', 'name')}
-            ))
+            items.append(
+                SFormTemplate(
+                    name=item["name"],
+                    fields={k: v for k, v in item.items() if k not in ("_id", "name")},
+                )
+            )
         return items
 
     logger.error("Не нашлось нужного шаблона")
-
-    return SInputDdataEmpty(extra_fields=fields_search)
+    raise HTTPException(
+        status_code=404,
+        detail=SInputDdataEmpty(extra_fields=fields_search).model_dump(),
+    )
 
 
 if __name__ == "__main__":
