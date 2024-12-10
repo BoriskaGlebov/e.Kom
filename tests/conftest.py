@@ -1,47 +1,49 @@
 # conftest.py
-import asyncio
-from typing import AsyncGenerator
-
 import pytest
 from motor.motor_asyncio import AsyncIOMotorClient
-from main import app  # Import your FastAPI app
+
+from main import app, get_db
+# Настройка подключения к MongoDB
+MONGODB_URL = "mongodb://user:password@localhost:27017"
+DATABASE_NAME = 'e_kom'
+
+# Создаем экземпляр клиента MongoDB
+client = AsyncIOMotorClient(MONGODB_URL)
+
+
+def override_get_db():
+    """Получение подключения к базе данных."""
+    db = client[DATABASE_NAME]  # Получаем базу данных
+    try:
+        yield db  # Возвращаем подключение к базе данных
+    finally:
+        pass  # Здесь можно закрыть соединение, если это необходимо
+
+app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture(scope="session")
-def event_loop() -> AsyncGenerator:
-    """
-    Фикстура для создания единого event loop для всех тестов.
-    Вот эта функция нужна для работы в одном event loop всех тестов
-
-    :yield: Event loop.
-    """
-    loop = asyncio.get_event_loop()
-    yield loop
-    loop.close()
-
-@pytest.fixture
 async def mongo_client():
-    """Fixture for MongoDB client."""
+    """Фикстура для подключения к MongoDB."""
     client = AsyncIOMotorClient("mongodb://user:password@localhost:27017")
     yield client
     client.close()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def setup_database(mongo_client):
-    """Fixture for setting up and tearing down the test database."""
-    db_name = 'test_db'
-    db = mongo_client[db_name]
+    """Фикстура для настройки тестовой базы данных."""
+    db = mongo_client['test_db']
 
-    # Clear the database before each test
+    # Очистка коллекции перед каждым тестом
     await db.drop_collection("form_templates")
 
-    # Optionally, insert some initial data for testing
+    # Вставка тестовых данных
     await db.form_templates.insert_many([
         {"name": "Template 1", "fields": {"email_field": "email", "phone_field": "phone"}},
         {"name": "Template 2", "fields": {"date_field": "date", "text_field": "text"}},
     ])
 
-    yield db  # Provide the database to the test
+    yield db  # Предоставление базы данных для тестов
 
-    # Clean up after each test
+    # Очистка после теста
     await db.drop_collection("form_templates")

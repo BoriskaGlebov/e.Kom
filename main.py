@@ -6,19 +6,20 @@ from fastapi.params import Depends
 from config import logger
 import uvicorn
 from fastapi import FastAPI
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from typing import List, Union
 
 from data_generate import generate_random_data
 from schemas import SInputData, SFormTemplate, SInputDdataEmpty
 
-
 # Настройка подключения к MongoDB
 MONGODB_URL = "mongodb://user:password@localhost:27017"
 DATABASE_NAME = 'e_kom'
+COLLECTION_NAME = "form_templates"
 
 # Создаем экземпляр клиента MongoDB
 client = AsyncIOMotorClient(MONGODB_URL)
+
 
 # Функция для получения подключения к базе данных
 async def get_db():
@@ -28,11 +29,6 @@ async def get_db():
         yield db  # Возвращаем подключение к базе данных
     finally:
         pass  # Здесь можно закрыть соединение, если это необходимо
-# client = AsyncIOMotorClient("mongodb://user:password@localhost:27017")
-# db_name = 'e_kom'
-# client.drop_database('ekom')
-# db = client[db_name]  # Имя вашей базы данных
-# templates_collection = db["form_templates"]
 
 
 @asynccontextmanager
@@ -51,7 +47,7 @@ async def lifespan(app: FastAPI):
     logger.info("БД очищена")
     db = client[DATABASE_NAME]
     random_data = [generate_random_data(random.randint(1, 10)) for _ in range(100)]
-    templates_collection = db["form_templates"]
+    templates_collection = db[COLLECTION_NAME]
     await templates_collection.insert_many(random_data)
     yield
     client.close()
@@ -109,13 +105,15 @@ app = FastAPI(
 
 
 @app.post("/get_form", response_model=Union[List[SFormTemplate], SInputDdataEmpty])
-async def get_form(form_data: SInputData,db=Depends(get_db)) -> Union[List[SFormTemplate], SInputDdataEmpty]:
+async def get_form(form_data: SInputData, db: AsyncIOMotorCollection = Depends(get_db)) -> Union[
+    List[SFormTemplate], SInputDdataEmpty]:
     """
     Retrieve form templates based on input data.
 
     This endpoint accepts form data and searches for matching templates in the database.
 
     :param form_data: The input data containing fields to search for.
+    :param db: The MongoDB collection for form templates, obtained via dependency injection.
 
     :return: A list of matching form templates (SFormTemplate) or an empty input response (SInputDdataEmpty)
              if no templates are found.
@@ -124,7 +122,7 @@ async def get_form(form_data: SInputData,db=Depends(get_db)) -> Union[List[SForm
     fields_search = form_data.replace_data()
     print(fields_search)
 
-    templates_collection=db["form_templates"]
+    templates_collection = db[COLLECTION_NAME]
     res = await templates_collection.find(fields_search).to_list(length=None)
     print(res)
     if res:
@@ -139,6 +137,7 @@ async def get_form(form_data: SInputData,db=Depends(get_db)) -> Union[List[SForm
     logger.error("Не нашлось нужного шаблона")
 
     return SInputDdataEmpty(extra_fields=fields_search)
+
 
 if __name__ == "__main__":
     uvicorn.run(app="main:app", host="0.0.0.0", port=8000, reload=True)
