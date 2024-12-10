@@ -12,7 +12,7 @@ from data_generate import generate_random_data
 from schemas import SFormTemplate, SInputData, SInputDdataEmpty
 
 # Настройка подключения к MongoDB
-MONGODB_URL = "mongodb://user:password@localhost:27017"
+MONGODB_URL = "mongodb://user:password@mongodb:27017"
 DATABASE_NAME = "e_kom"
 COLLECTION_NAME = "form_templates"
 

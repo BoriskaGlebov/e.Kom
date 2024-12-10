@@ -2,7 +2,7 @@ import re
 from typing import Any, Dict
 
 import phonenumbers
-from bson import ObjectId
+# from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from config import logger

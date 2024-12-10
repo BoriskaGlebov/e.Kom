@@ -1,21 +1,5 @@
 services:
-#  fastapi:
-#    build:
-#      context: ./app  # Путь к директории с вашим приложением
-#      dockerfile: Dockerfile
-#    container_name: fastapi_app
-#    restart: unless-stopped
-#    environment:
-#      MONGODB_DATABASE: flaskdb
-#      MONGODB_USERNAME: flaskuser
-#      MONGODB_PASSWORD: your_mongodb_password
-#      MONGODB_HOSTNAME: mongodb
-#    ports:
-#      - "8000:80"  # Прокидываем порт 80 контейнера на порт 8000 хоста
-#    depends_on:
-#      - mongodb  # Указывает, что контейнер fastapi зависит от mongodb
-#    networks:
-#      - backend
+
 
   mongodb:
     image: mongo:7.0.0 # Используем официальный образ MongoDB
@@ -31,9 +15,18 @@ services:
       - mongo_vol:/data/db  # Монтируем том для хранения данных MongoDB
     networks:
       - backend
-
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongodb
+#    environment:
+#      - MONGODB_URL=mongodb://mongodb:27017/e_kom  # Update to use service name
+    networks:
+      - backend
 volumes:
-  mongo_vol: {}
+  mongo_vol: { }
 
 networks:
   backend:
